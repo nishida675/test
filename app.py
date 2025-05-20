@@ -2,11 +2,20 @@ import yt_dlp
 import streamlit as st
 import tempfile
 import os
+import subprocess
 
 st.title('YouTube オーディオダウンロード')
 
 if 'yt_info' not in st.session_state:
     st.session_state['yt_info'] = None
+
+# キャッシュクリア関数
+def clear_yt_dlp_cache():
+    try:
+        subprocess.run(["yt-dlp", "--rm-cache-dir"], check=True)
+        st.success("yt-dlpのキャッシュをクリアしました。")
+    except Exception as e:
+        st.warning(f"キャッシュクリアに失敗しました: {str(e)}")
 
 # URL入力フォーム
 with st.form(key="url_form"):
@@ -15,8 +24,18 @@ with st.form(key="url_form"):
 
 # 情報取得
 if submit and video_url:
+    clear_yt_dlp_cache()  # キャッシュを毎回クリア
     try:
-        with yt_dlp.YoutubeDL() as ydl:
+        ydl_opts = {
+            'quiet': True,
+            'force_generic_extractor': False,
+            'noplaylist': True,
+            'default_search': 'ytsearch',
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+            }
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             st.session_state['yt_info'] = info
     except Exception as e:
@@ -25,8 +44,9 @@ if submit and video_url:
 # 情報表示
 if st.session_state['yt_info']:
     info = st.session_state['yt_info']
-    st.write(f"タイトル: {info['title']}")
-    st.image(info['thumbnail'])
+    st.write(f"タイトル: {info.get('title', '不明')}")
+    if 'thumbnail' in info:
+        st.image(info['thumbnail'])
 
     if st.button("音声(mp3)をダウンロード"):
         try:
@@ -41,6 +61,10 @@ if st.session_state['yt_info']:
                         'preferredquality': '192',
                     }],
                     'quiet': True,
+                    'noplaylist': True,
+                    'headers': {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                    }
                 }
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -50,12 +74,9 @@ if st.session_state['yt_info']:
 
                 if downloaded_file:
                     file_path = os.path.join(tmpdir, downloaded_file)
-
-                    # メモリに読み込む
                     with open(file_path, "rb") as f:
                         audio_bytes = f.read()
 
-                    # bytesでダウンロードボタンに渡す
                     st.download_button(
                         label="ここをクリックしてダウンロード",
                         data=audio_bytes,
